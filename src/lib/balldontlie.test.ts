@@ -241,7 +241,7 @@ const dnp = (row: ApiRow): ApiRow => ({
 });
 
 test("cold and warm caches equal full scans across corrections, removals, DNPs, live games and new debuts", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const cache = join(folder, "2025-26.json");
   const output = join(folder, "snapshot.json");
   try {
@@ -286,7 +286,7 @@ test("cold and warm caches equal full scans across corrections, removals, DNPs, 
 });
 
 test("warm eligibility is season-scoped and full-refresh bypasses both history and box-score caches", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const cache = join(folder, "cache.json");
   const output = join(folder, "snapshot.json");
   try {
@@ -322,7 +322,7 @@ test("warm eligibility is season-scoped and full-refresh bypasses both history a
 });
 
 test("malformed, incompatible and incomplete caches safely fall back to a full validated scan", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const cache = join(folder, "cache.json");
   const output = join(folder, "snapshot.json");
   try {
@@ -363,7 +363,7 @@ test("malformed, incompatible and incomplete caches safely fall back to a full v
 });
 
 test("failed incremental or full collections preserve both successful artifacts and reject duplicate refreshed rows", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const cache = join(folder, "cache.json");
   const output = join(folder, "snapshot.json");
   try {
@@ -501,7 +501,7 @@ test("failed team and season requests record their active phase timings", async 
 });
 
 test("cached rookie and veteran eligibility survive empty refreshes and configurable windows", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const cache = join(folder, "cache.json");
   const output = join(folder, "snapshot.json");
   try {
