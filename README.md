@@ -67,6 +67,10 @@ src/components/          Dashboard, leaderboard, player panel, lazy-loaded Recha
 src/data/rookies.ts      Deterministic demo profiles and ten chronological logs each
 src/lib/models.ts        Typed rookies, stats, logs, snapshots, provider interface
 src/lib/data.ts          Provider selection (server-side integration seam)
+src/lib/nba-stats.ts     NBA endpoint transformations and snapshot assembly
+src/lib/snapshot.ts      Snapshot runtime validation
+src/lib/snapshot-provider.ts  Server-side file reader implementing the provider
+scripts/                Manual NBA Stats collector and snapshot validation CLI
 src/lib/scoring.ts       Configurable formula, breakdown, immutable ranking
 src/lib/format.ts        Percentage/date formatting and recent averages
 src/lib/scoring.test.ts  Formula, ranking, seed integrity, and formatting tests

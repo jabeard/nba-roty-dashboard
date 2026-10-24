@@ -24,6 +24,7 @@ export function validateSnapshot(value: unknown): RookieSnapshot {
   validateSeason(snapshot.season);
   requireValue(timestamp(snapshot.updatedAt), "updatedAt (UTC ISO timestamp)");
   requireValue(snapshot.source === "snapshot", "source");
+  requireValue(snapshot.notice === undefined || typeof snapshot.notice === "string", "notice");
   requireValue(snapshot.scheduledGames === 82, "scheduledGames (82)");
   requireValue(Array.isArray(snapshot.rookies) && snapshot.rookies.length > 0, "rookies (nonempty)");
   const metadata = record(snapshot.sourceMetadata);

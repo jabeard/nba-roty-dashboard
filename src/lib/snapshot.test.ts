@@ -92,6 +92,7 @@ test("snapshot contract validates metadata, timestamps, unique IDs, stats and ch
     (s: ReturnType<typeof makeSnapshot>) => { s.updatedAt = "2026-02-30T00:00:00.000Z"; },
     (s: ReturnType<typeof makeSnapshot>) => { s.season = "2026-28"; },
     (s: ReturnType<typeof makeSnapshot>) => { s.source = "demo"; },
+    (s: ReturnType<typeof makeSnapshot>) => { Object.assign(s, { notice: { message: "invalid" } }); },
     (s: ReturnType<typeof makeSnapshot>) => { delete s.sourceMetadata; },
     (s: ReturnType<typeof makeSnapshot>) => { s.rookies = []; },
     (s: ReturnType<typeof makeSnapshot>) => { s.rookies.push(s.rookies[0]); },
