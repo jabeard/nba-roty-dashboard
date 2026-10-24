@@ -72,7 +72,7 @@ src/lib/balldontlie.ts   BALLDONTLIE box-score transformations and aggregation
 src/lib/snapshot.ts      Snapshot runtime validation
 src/lib/snapshot-provider.ts  Server-side file reader implementing the provider
 scripts/                Manual provider collectors and snapshot validation CLI
-.github/workflows/       Manual (workflow_dispatch) collection workflow
+.github/workflows/       Manual collection workflows; BALLDONTLIE also deploys to Vercel
 src/lib/scoring.ts       Configurable formula, breakdown, immutable ranking
 src/lib/format.ts        Percentage/date formatting and recent averages
 src/lib/scoring.test.ts  Formula, ranking, seed integrity, and formatting tests
@@ -130,22 +130,49 @@ Both provider formats use the same snapshot validator and dashboard.
 1. Subscribe to NBA ALL-STAR (or higher) at [BALLDONTLIE](https://www.balldontlie.io/)
    and obtain an API key; confirm your plan's data-display/redistribution terms.
 2. In this repository, open **Settings → Secrets and variables → Actions → New
-   repository secret** and add **`BALLDONTLIE_API_KEY`**.
-3. After the workflow is on the default branch, open **Actions → Pull BALLDONTLIE
-   rookie stats → Run workflow**, select a season such as `2026-27`, and run it.
-   The year is the season's starting year, not its ending year.
-4. Download the successful run's `balldontlie-snapshot-<run id>` artifact, extract
-   `live-snapshot.json`, and place it at `data/live-snapshot.json`.
-5. Set **`DATA_SOURCE=snapshot`** and restart locally or rebuild/redeploy the app
-   with that file present. The dashboard displays **BALLDONTLIE SNAPSHOT** and
-   the actual collection timestamp; the API key is not needed by the dashboard.
+   repository secret** and add:
+   - **`BALLDONTLIE_API_KEY`** — your NBA ALL-STAR API key.
+   - **`VERCEL_TOKEN`** — a Vercel access token authorized to deploy the project.
+   - **`VERCEL_ORG_ID`** — the Vercel account/team ID.
+   - **`VERCEL_PROJECT_ID`** — the existing Vercel project's ID.
 
-This action is **manual, artifact-only**, read-only, and serialized, with a
-45-minute timeout and seven-day artifact retention. It does **not** commit data,
-trigger Vercel, update an existing deployment, or enable a schedule. Public-repo
-artifacts are accessible to signed-in GitHub users; only run it if your license
-allows that distribution. Failures publish no snapshot and leave the dashboard
-unchanged. The separate NBA Stats feasibility action remains available.
+   Find project/account IDs in Vercel project/account settings, or in
+   `.vercel/project.json` after linking the project locally. Never commit this
+   folder or tokens. The Vercel project must use this repository root and Next.js
+   with its standard `npm run build` command.
+3. After the workflow is on the default branch, open **Actions → Pull BALLDONTLIE
+   rookie stats → Run workflow**, use the **default branch**, select a season
+   such as `2026-27`, and run it. The year is the season's starting year, not its
+   ending year. Production pulls from other branches are rejected.
+4. The workflow collects and validates stats, pulls Vercel's production project
+   settings, builds locally with the new snapshot and **`DATA_SOURCE=snapshot`**,
+   and deploys the prebuilt output to **Vercel production**. No download or manual
+   redeployment is needed. The dashboard displays **BALLDONTLIE SNAPSHOT** and the
+   actual collection timestamp; the API key is not needed by the dashboard.
+5. Check the run summary and deployment step for the result and deployment URL.
+   The `balldontlie-snapshot-<run id>` artifact remains available for download
+   for local use or recovery, even if a later build/deployment step fails.
+
+This action is **manually triggered, with automatic production deployment**,
+read-only for repository contents, and serialized across collection and deployment,
+with a 45-minute timeout and seven-day artifact retention. It does **not** commit
+data or enable a schedule. Collection, validation, and build must all succeed
+before deployment runs; failure in those steps leaves the current website
+unchanged. The Vercel CLI is pinned, and `deploy --prebuilt` uploads the output
+built with the snapshot on the runner; a deploy hook or remote Git rebuild would
+not include this gitignored file. The build overrides any Vercel `DATA_SOURCE=demo`
+setting, and the deployed runtime is also configured for snapshot mode.
+
+The BALLDONTLIE key is scoped to collection; Vercel secrets are used for project
+configuration/build/deployment, not embedded in client code. Public-repo artifacts
+are accessible to signed-in GitHub users, and the deployment makes stats public;
+only run this workflow if your license allows distribution. The separate NBA
+Stats feasibility action remains artifact-only.
+
+Normal Vercel Git deployments do not have the runner's snapshot and can overwrite
+the site with demo data. Use this workflow again after such a deployment to restore
+fresh snapshot data, or disable overlapping Git-triggered production deployments
+in Vercel if this workflow should be the sole publisher.
 
 ### Local collection
 
@@ -329,5 +356,6 @@ real results and eligibility against NBA displays, add per-team games-to-date
 availability scoring, reliability hardening (authorized collection host, durable
 snapshot storage, freshness policy, caching/revalidation and recovery), monitoring
 and alerting for collection failures/staleness/schema drift, and appropriate
-attribution. No production live mode or scheduled collection is enabled here;
-the GitHub Actions workflow is manual and artifact-only.
+attribution. No NBA Stats production live mode or scheduled collection is enabled
+here; the NBA Stats GitHub Actions workflow is manual and artifact-only. The
+BALLDONTLIE workflow above separately supports production snapshot deployment.
