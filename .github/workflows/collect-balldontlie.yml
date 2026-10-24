@@ -1,0 +1,65 @@
+name: Pull BALLDONTLIE rookie stats
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NBA season (YYYY-YY)
+        required: true
+        default: 2026-27
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collect-balldontlie
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect BALLDONTLIE snapshot
+        env:
+          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+          SEASON: ${{ inputs.season }}
+        run: npm run collect:balldontlie -- --season "$SEASON"
+
+      - name: Validate snapshot
+        run: npm run validate:snapshot
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: balldontlie-snapshot-${{ github.run_id }}
+          path: data/live-snapshot.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write run summary
+        if: always()
+        run: |
+          if [ -f data/live-snapshot.json ]; then
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const s = JSON.parse(readFileSync("data/live-snapshot.json", "utf8"));
+              console.log(`## BALLDONTLIE snapshot (${s.season})`);
+              console.log(`${s.rookies.length} first-season players. Collected ${s.updatedAt}.`);
+              console.log("Download the balldontlie-snapshot artifact. Data was not committed or deployed.");
+              console.log("Eligibility is inferred from provider history, not an official NBA rookie list.");
+            ' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## BALLDONTLIE collection failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "No snapshot was produced. Check the collection step log, API secret, and NBA subscription access." >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -39,7 +39,7 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
       </aside>
 
       <div className="main-shell">
-        <header className="topbar"><div><span className="breadcrumb">NBA</span><span className="slash">/</span>Rookie of the Year</div><div className="topbar-right"><span className="status-indicator" />{snapshot.source === "demo" ? "DEMO DATA" : snapshot.source === "snapshot" ? "NBA STATS SNAPSHOT" : "LIVE SNAPSHOT"}<span className="season-chip">{snapshot.season}</span></div></header>
+        <header className="topbar"><div><span className="breadcrumb">NBA</span><span className="slash">/</span>Rookie of the Year</div><div className="topbar-right"><span className="status-indicator" />{snapshot.source === "demo" ? "DEMO DATA" : snapshot.source === "snapshot" ? `${snapshot.sourceMetadata?.provider === "BALLDONTLIE" ? "BALLDONTLIE" : "NBA STATS"} SNAPSHOT` : "LIVE SNAPSHOT"}<span className="season-chip">{snapshot.season}</span></div></header>
         <main id="main">
           <section id="overview" className="overview">
             <div className="page-heading"><div><p className="eyebrow"><span /> THE NEXT GENERATION</p><h1>The rookie race<span className="lime">.</span></h1><p className="page-description">Fresh talent. Real impact. Follow the NBA Rookie of the Year conversation.</p></div><a className="outline-button" href="#methodology">How we rank <Arrow /></a></div>

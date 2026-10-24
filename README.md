@@ -4,7 +4,7 @@ A responsive NBA Rookie of the Year dashboard built with Next.js App Router,
 TypeScript, Tailwind CSS, and Recharts. Independent and unofficial; not affiliated
 with the NBA.
 
-**This is a demo, not a current-season feed.** The 12 rookies, season averages, and
+**Demo by default, with optional manually collected snapshots.** The 12 seeded rookies, season averages, and
 last-ten game logs form an illustrative 2024–25 snapshot dated February 1, 2025.
 Stats and logs are synthetic examples, not official historical results.
 
@@ -68,9 +68,10 @@ src/data/rookies.ts      Deterministic demo profiles and ten chronological logs 
 src/lib/models.ts        Typed rookies, stats, logs, snapshots, provider interface
 src/lib/data.ts          Provider selection (server-side integration seam)
 src/lib/nba-stats.ts     NBA endpoint transformations and snapshot assembly
+src/lib/balldontlie.ts   BALLDONTLIE box-score transformations and aggregation
 src/lib/snapshot.ts      Snapshot runtime validation
 src/lib/snapshot-provider.ts  Server-side file reader implementing the provider
-scripts/                Manual NBA Stats collector and snapshot validation CLI
+scripts/                Manual provider collectors and snapshot validation CLI
 .github/workflows/       Manual (workflow_dispatch) collection workflow
 src/lib/scoring.ts       Configurable formula, breakdown, immutable ranking
 src/lib/format.ts        Percentage/date formatting and recent averages
@@ -112,6 +113,88 @@ the score.
 team impact, or opponent strength. Non-shooters can be penalized for zero 3P%.
 The fixed availability denominator suits this seed dataset only. The score is
 intentionally simple and should not be interpreted as total player value.
+
+## BALLDONTLIE ALL-STAR snapshots
+
+The optional BALLDONTLIE collector uses authenticated `/nba/v1/stats` game
+box scores and `/nba/v1/teams`, compatible with NBA **ALL-STAR or higher** access.
+It does not call season-averages, advanced-stats, or other higher-tier endpoints.
+The existing ROTY formula and weights are unchanged: the collector supplies
+per-game production, total makes / total attempts shooting fractions, and the
+most recent ten appearances (or all appearances if fewer). Only finished
+regular-season games count; live games, postseason games, and DNPs are excluded.
+Both provider formats use the same snapshot validator and dashboard.
+
+### Manual stat pull from GitHub
+
+1. Subscribe to NBA ALL-STAR (or higher) at [BALLDONTLIE](https://www.balldontlie.io/)
+   and obtain an API key; confirm your plan's data-display/redistribution terms.
+2. In this repository, open **Settings → Secrets and variables → Actions → New
+   repository secret** and add **`BALLDONTLIE_API_KEY`**.
+3. After the workflow is on the default branch, open **Actions → Pull BALLDONTLIE
+   rookie stats → Run workflow**, select a season such as `2026-27`, and run it.
+   The year is the season's starting year, not its ending year.
+4. Download the successful run's `balldontlie-snapshot-<run id>` artifact, extract
+   `live-snapshot.json`, and place it at `data/live-snapshot.json`.
+5. Set **`DATA_SOURCE=snapshot`** and restart locally or rebuild/redeploy the app
+   with that file present. The dashboard displays **BALLDONTLIE SNAPSHOT** and
+   the actual collection timestamp; the API key is not needed by the dashboard.
+
+This action is **manual, artifact-only**, read-only, and serialized, with a
+45-minute timeout and seven-day artifact retention. It does **not** commit data,
+trigger Vercel, update an existing deployment, or enable a schedule. Public-repo
+artifacts are accessible to signed-in GitHub users; only run it if your license
+allows that distribution. Failures publish no snapshot and leave the dashboard
+unchanged. The separate NBA Stats feasibility action remains available.
+
+### Local collection
+
+Export `BALLDONTLIE_API_KEY` in your shell using your secret manager (never commit
+it or prefix it with `NEXT_PUBLIC_`), then run from the repository root:
+
+```sh
+npm run collect:balldontlie -- --season 2026-27
+npm run validate:snapshot
+DATA_SOURCE=snapshot npm run dev
+```
+
+`--output /tmp/rookie-snapshot.json` is available for inspection; validate it with
+`npm run validate:snapshot -- --file /tmp/rookie-snapshot.json`.
+Production builds still require the validated file and `DATA_SOURCE=snapshot`
+at build time, then a rebuild whenever data changes. An unset `DATA_SOURCE`
+continues to select the original demo.
+
+### Rookie discovery and limitations
+
+- BALLDONTLIE player profiles do not expose official rookie eligibility.
+  The collector scans **all** target-season box-score pages, then checks each
+  participant's prior regular-season history (season filters from 1946 through
+  the preceding season). Players without prior recorded appearances enter the
+  rookie snapshot. Draft year is **not** used as an eligibility proxy: delayed
+  debuts and undrafted players can qualify, and current active rosters do not
+  exclude rookies who have since been waived.
+- This is **first observed NBA season**, not authoritative award eligibility.
+  Historical coverage gaps and rounded zero-minute appearances can affect
+  classification. Verify the resulting list against official eligibility
+  before using it for award analysis; the dashboard visibly discloses this.
+- Season stats combine all teams; the profile shows the team of the latest
+  appearance. Missing draft pick/jersey and unavailable age display “—”.
+  Availability still uses the full 82-game season, not team games played to date.
+- Requests are sequential, spaced at least 1.1 seconds apart, with 20-second
+  timeouts and at most three attempts for network errors, 429s, and 5xx responses.
+  Backoff honors `Retry-After`; a delay over two minutes stops the run.
+  Authentication/subscription errors fail immediately without printing the key
+  or response bodies. No new dependencies or paid endpoints beyond ALL-STAR
+  box-score access are needed.
+- Full-season pagination plus one or more history requests per participant can
+  take many minutes. Empty seasons, incomplete or invalid responses, and failed
+  requests exit nonzero; the validated file is replaced atomically only after
+  the entire collection succeeds.
+
+API reference: [BALLDONTLIE documentation](https://docs.balldontlie.io/);
+endpoint/filter schemas also follow the
+[official TypeScript SDK](https://github.com/balldontlie-api/typescript).
+No live authenticated request has been verified without your API key.
 
 ## Local NBA Stats feasibility path
 
@@ -209,10 +292,11 @@ Do not run parallel collectors or try to bypass IP blocks/access controls.
 `RookieDataProvider`. `src/lib/data.ts` defaults to the unchanged mock provider.
 Missing/malformed snapshots or invalid source configuration produce a server
 warning and a **visible demo fallback notice**, not an app startup failure.
-Only successful snapshot data uses the `NBA STATS SNAPSHOT` label; timestamps
+Only successful snapshot data uses a provider-specific snapshot label; timestamps
 are never refreshed merely because the file was read.
 
-- No box-score streaming, always-on scraping, credentials, or paid service.
+- The NBA Stats path has no credentials or paid service; neither path streams
+  box scores or runs automatically.
 - NBA endpoints are unofficial/unsupported for this use; rate limits, timeouts,
   IP blocks, schema changes, and incomplete bios/logs may prevent collection.
   A cloud/CI failure does not affect demo startup; collect locally if permitted.

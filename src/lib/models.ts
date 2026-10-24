@@ -25,7 +25,7 @@ export interface Rookie {
   teamCode: string;
   position: string;
   number: number | null;
-  age: number;
+  age: number | null;
   draftPick: number | null;
   color: string;
   stats: SeasonStats;
@@ -40,7 +40,7 @@ export interface RookieSnapshot {
   rookies: Rookie[];
   notice?: string;
   sourceMetadata?: {
-    provider: "NBA Stats";
+    provider: "NBA Stats" | "BALLDONTLIE";
     seasonType: "Regular Season";
     endpoints: string[];
     warnings: string[];
