@@ -1,0 +1,76 @@
+name: Collect rookie stats
+
+# Manual only for now. Run from the Actions tab or the GitHub mobile app
+# (Actions → Collect rookie stats → Run workflow). A daily schedule can be
+# added once manual runs are confirmed to work.
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NBA season (YYYY-YY)
+        required: true
+        default: 2026-27
+        type: string
+
+permissions:
+  contents: read
+
+# The collector must never run in parallel against NBA Stats.
+concurrency:
+  group: collect-nba-stats
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect NBA Stats snapshot
+        env:
+          SEASON: ${{ inputs.season }}
+        run: npm run collect:nba-stats -- --season "$SEASON"
+
+      - name: Validate snapshot
+        run: npm run validate:snapshot
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-snapshot-${{ github.run_id }}
+          path: data/live-snapshot.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write run summary
+        if: always()
+        env:
+          SEASON: ${{ inputs.season }}
+        run: |
+          if [ -f data/live-snapshot.json ]; then
+            node -e '
+              const s = JSON.parse(require("fs").readFileSync("data/live-snapshot.json", "utf8"));
+              const top = [...s.rookies].sort((a, b) => b.stats.points - a.stats.points).slice(0, 5);
+              const rows = top.map((r) => `| ${r.name} | ${r.teamCode} | ${r.stats.gamesPlayed} | ${r.stats.points.toFixed(1)} |`);
+              console.log([
+                `## Rookie stats collected (${s.season})`,
+                `${s.rookies.length} rookies, collected ${s.updatedAt}.`,
+                "", "Top scorers:", "", "| Player | Team | GP | PPG |", "| --- | --- | --: | --: |", ...rows,
+                "", "Download the `live-snapshot-*` artifact below. Data was not committed or deployed.",
+              ].join("\n"));
+            ' >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Rookie stats collection failed ($SEASON)"
+              echo "No snapshot was produced. See the *Collect NBA Stats snapshot* step log."
+              echo "NBA Stats often throttles or blocks cloud/CI IPs; a failure here may not reproduce locally."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

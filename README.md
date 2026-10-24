@@ -71,6 +71,7 @@ src/lib/nba-stats.ts     NBA endpoint transformations and snapshot assembly
 src/lib/snapshot.ts      Snapshot runtime validation
 src/lib/snapshot-provider.ts  Server-side file reader implementing the provider
 scripts/                Manual NBA Stats collector and snapshot validation CLI
+.github/workflows/       Manual (workflow_dispatch) collection workflow
 src/lib/scoring.ts       Configurable formula, breakdown, immutable ranking
 src/lib/format.ts        Percentage/date formatting and recent averages
 src/lib/scoring.test.ts  Formula, ranking, seed integrity, and formatting tests
@@ -125,9 +126,28 @@ DATA_SOURCE=snapshot npm run dev
 
 Open <http://localhost:3000>. The season defaults to `2026-27`, so
 `npm run collect:nba-stats` is equivalent. Collection is **manual only**: no cron,
-CI collection, automatic refresh, or NBA requests from the dashboard runtime.
-For an explicitly authorized local scheduler, invoke the same collector command;
-no scheduler is enabled by this project.
+automatic refresh, or NBA requests from the dashboard runtime. For an explicitly
+authorized local scheduler, invoke the same collector command; no scheduler is
+enabled by this project.
+
+### Manual GitHub Actions collection
+
+`.github/workflows/collect-nba-stats.yml` runs the same collector and validator on
+demand. Trigger it from the repository's **Actions** tab or the GitHub mobile app:
+**Actions → Collect rookie stats → Run workflow**, optionally changing the season.
+
+- Runs only via `workflow_dispatch`; there is no schedule yet.
+- One run at a time (concurrency group), read-only repository permissions,
+  45-minute timeout.
+- On success the validated snapshot is uploaded as a `live-snapshot-<run id>`
+  artifact (kept 7 days) and the run summary lists the rookie count, collection
+  time, and top scorers. Download the artifact and save it as
+  `data/live-snapshot.json` to use it locally.
+- The snapshot is **not committed or deployed**; the Vercel site is unchanged.
+  Artifacts of a public repository are visible to signed-in GitHub users, so the
+  redistribution caution above still applies.
+- NBA Stats frequently throttles or blocks cloud IPs, including GitHub-hosted
+  runners. A failed run leaves nothing changed; check the step log and summary.
 
 To return to the original dashboard:
 
@@ -225,4 +245,5 @@ real results and eligibility against NBA displays, add per-team games-to-date
 availability scoring, reliability hardening (authorized collection host, durable
 snapshot storage, freshness policy, caching/revalidation and recovery), monitoring
 and alerting for collection failures/staleness/schema drift, and appropriate
-attribution. No production live mode or scheduled collection is enabled here.
+attribution. No production live mode or scheduled collection is enabled here;
+the GitHub Actions workflow is manual and artifact-only.
