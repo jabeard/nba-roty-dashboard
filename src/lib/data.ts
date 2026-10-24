@@ -1,7 +1,25 @@
-import { mockRookieProvider } from "../data/rookies";
-import type { RookieDataProvider } from "./models";
+import { mockRookieProvider } from "../data/rookies.ts";
+import type { RookieDataProvider } from "./models.ts";
+import { createSnapshotProvider } from "./snapshot-provider.ts";
 
-// TODO: Replace with a server-only live provider implementing RookieDataProvider.
-// Validate upstream data, normalize shooting percentages to 0–1, and add caching,
-// rate-limit handling, and per-team scheduled games before enabling a live source.
-export const rookieProvider: RookieDataProvider = mockRookieProvider;
+export function selectRookieProvider(source = process.env.DATA_SOURCE ?? "demo", snapshotProvider = createSnapshotProvider()): RookieDataProvider {
+  if (source === "demo") return mockRookieProvider;
+  return {
+    async getSnapshot() {
+      try {
+        if (source !== "snapshot") throw new Error("Invalid DATA_SOURCE; use demo or snapshot.");
+        return await snapshotProvider.getSnapshot();
+      } catch (error) {
+        console.warn("[Rookie Radar]", error instanceof Error ? error.message : String(error));
+        return {
+          ...await mockRookieProvider.getSnapshot(),
+          notice: source === "snapshot"
+            ? "NBA Stats snapshot is missing or invalid. Showing demo data instead. Generate and validate a snapshot locally, then restart or rebuild the app."
+            : "Unrecognized DATA_SOURCE. Showing demo data; use demo or snapshot.",
+        };
+      }
+    },
+  };
+}
+
+export const rookieProvider = selectRookieProvider();

@@ -19,9 +19,9 @@ export function PlayerDetail({ rookie }: { rookie: RankedRookie | undefined }) {
       <div className="section-kicker"><span>PLAYER SPOTLIGHT</span><span className="mini-tag">RANK #{rookie.rank}</span></div>
       <div className="player-bio">
         <PlayerAvatar name={rookie.name} color={rookie.color} large />
-        <div><h3 id="player-name" aria-live="polite">{rookie.name}</h3><p>{rookie.team}</p><span>{rookie.position} <span aria-hidden="true">·</span> #{rookie.number}</span></div>
+        <div><h3 id="player-name" aria-live="polite">{rookie.name}</h3><p>{rookie.team}</p><span>{rookie.position} <span aria-hidden="true">·</span> {rookie.number === null ? "—" : `#${rookie.number}`}</span></div>
       </div>
-      <div className="bio-meta"><span>AGE <b>{rookie.age}</b></span><span>DRAFT PICK <b>#{rookie.draftPick}</b></span><span>ROTY SCORE <b className="lime">{formatStat(rookie.score)}</b></span></div>
+      <div className="bio-meta"><span>AGE <b>{rookie.age}</b></span><span>DRAFT PICK <b>{rookie.draftPick === null ? "—" : `#${rookie.draftPick}`}</b></span><span>ROTY SCORE <b className="lime">{formatStat(rookie.score)}</b></span></div>
       <div className="detail-section-title"><h4>Season at a glance</h4><span>{rookie.stats.gamesPlayed} games</span></div>
       <dl className="season-stats">
         {([

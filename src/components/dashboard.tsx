@@ -39,11 +39,13 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
       </aside>
 
       <div className="main-shell">
-        <header className="topbar"><div><span className="breadcrumb">NBA</span><span className="slash">/</span>Rookie of the Year</div><div className="topbar-right"><span className="status-indicator" />{snapshot.source === "demo" ? "DEMO DATA" : "LIVE SNAPSHOT"}<span className="season-chip">{snapshot.season}</span></div></header>
+        <header className="topbar"><div><span className="breadcrumb">NBA</span><span className="slash">/</span>Rookie of the Year</div><div className="topbar-right"><span className="status-indicator" />{snapshot.source === "demo" ? "DEMO DATA" : snapshot.source === "snapshot" ? "NBA STATS SNAPSHOT" : "LIVE SNAPSHOT"}<span className="season-chip">{snapshot.season}</span></div></header>
         <main id="main">
           <section id="overview" className="overview">
             <div className="page-heading"><div><p className="eyebrow"><span /> THE NEXT GENERATION</p><h1>The rookie race<span className="lime">.</span></h1><p className="page-description">Fresh talent. Real impact. Follow the NBA Rookie of the Year conversation.</p></div><a className="outline-button" href="#methodology">How we rank <Arrow /></a></div>
             <div className="demo-notice"><span className="demo-badge">{snapshot.source === "demo" ? "DEMO" : "SNAPSHOT"}</span><p>{snapshot.source === "demo" ? "An illustrative 2024–25 snapshot. All stats and game logs are seeded examples, not live NBA data." : "An independent statistical snapshot. ROTY Score is not an official NBA metric."}</p></div>
+            {snapshot.notice && <div className="demo-notice" role="status"><p>{snapshot.notice}</p></div>}
+            {snapshot.sourceMetadata?.warnings.map((warning) => <div className="demo-notice" key={warning}><p>{warning}</p></div>)}
             <div className="summary-grid">
               <div className="summary-card"><span className="summary-label">CURRENT FRONTRUNNER <span aria-hidden="true">↗</span></span><div className="summary-primary">{leader?.name ?? "Race opens soon"}<span className="small-score">{leader ? `${formatStat(leader.score)} SCORE` : "—"}</span></div><p>{leader?.team ?? "Awaiting the first rookie snapshot"}</p></div>
               <div className="summary-card"><span className="summary-label">ROOKIES ON THE RADAR <span aria-hidden="true">◎</span></span><div className="summary-primary numeric">{ranked.length.toString().padStart(2, "0")}<span className="summary-unit">players</span></div><p>One class. Every contribution counts.</p></div>
@@ -59,7 +61,7 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
                 const difference = recent ? recent.points - rookie.stats.points : 0;
                 return <button key={rookie.id} className={`contender-card contender-${rookie.rank}`} onClick={() => selectPlayer(rookie.id)} aria-label={`View ${rookie.name}, ranked ${rookie.rank}`} aria-controls="player-detail" style={{ "--team-color": rookie.color } as CSSProperties}>
                   <div className="contender-top"><span className={`contender-rank rank-${rookie.rank}`}>0{rookie.rank} <span>{rookie.rank === 1 ? "THE FRONTRUNNER" : "IN THE CHASE"}</span></span><Arrow /></div>
-                  <span className="jersey-number" aria-hidden="true">{String(rookie.number).padStart(2, "0")}</span>
+                  <span className="jersey-number" aria-hidden="true">{rookie.number === null ? "—" : String(rookie.number).padStart(2, "0")}</span>
                   <div className="contender-identity"><PlayerAvatar name={rookie.name} color={rookie.color} large /><div><p>{rookie.teamCode} <span>· {rookie.position}</span></p><h3>{rookie.name}</h3></div></div>
                   <div className="contender-stats"><div><strong>{formatStat(rookie.stats.points)}</strong><span>PPG</span></div><div><strong>{formatStat(rookie.stats.rebounds)}</strong><span>RPG</span></div><div><strong>{formatStat(rookie.stats.assists)}</strong><span>APG</span></div><div className="contender-score"><strong>{formatStat(rookie.score)}</strong><span>ROTY SCORE</span></div></div>
                   <div className="contender-footer"><span className={difference >= 0 ? "trend-up" : "trend-down"}>{difference >= 0 ? "↗ +" : "↘ "}{formatStat(difference)} PPG</span><span>last 10 vs season</span></div>
@@ -80,7 +82,7 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
           <section id="methodology" className="panel methodology" aria-labelledby="methodology-heading">
             <div className="methodology-intro"><p className="eyebrow">NO BLACK BOX</p><h2 id="methodology-heading">A score you can see through.</h2><p>ROTY Score is our custom, unofficial 0–100 index. Five dimensions. One weighted score. No predictions, no award odds.</p><span className="formula-chip">Σ (normalized dimension × weight)</span></div>
             <div className="weights">{(Object.keys(SCORE_WEIGHTS) as (keyof typeof SCORE_WEIGHTS)[]).map((key) => <div className="weight-row" key={key}><div><span>{SCORE_DIMENSIONS[key].label}</span><strong>{Number(weights[key].toFixed(1))}%</strong></div><div className="weight-track"><span style={{ width: `${weights[key]}%` }} /></div><p>{SCORE_DIMENSIONS[key].description}</p></div>)}</div>
-            <p className="methodology-footnote">Each ratio is capped at 0–1 before weighting; the final score is shown to one decimal. Availability uses {snapshot.scheduledGames} scheduled games in this demo. Shooting percentages aren’t adjusted for attempt volume. This simple model is a conversation starter, not a measure of total player value.</p>
+            <p className="methodology-footnote">Each ratio is capped at 0–1 before weighting; the final score is shown to one decimal. Availability uses {snapshot.scheduledGames} scheduled games{snapshot.source === "demo" ? " in this demo" : " for the full season, not team games played to date"}. Shooting percentages aren’t adjusted for attempt volume. This simple model is a conversation starter, not a measure of total player value.</p>
           </section>
           <footer className="footer"><a href="#" className="footer-brand"><Basketball /> ROOKIE RADAR</a><p>Built for the next generation of the game.</p><span>Not affiliated with the NBA.</span></footer>
         </main>
