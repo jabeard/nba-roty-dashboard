@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -147,7 +148,7 @@ test("collector discovers delayed/undrafted first-season players, excludes veter
 });
 
 test("empty, wrong-season, duplicate, incomplete, and failed collections do not replace good snapshots", async () => {
-  const folder = await mkdtemp(join(process.cwd(), ".balldontlie-test-"));
+  const folder = await mkdtemp(join(tmpdir(), "balldontlie-"));
   const output = join(folder, "snapshot.json");
   try {
     const saved = await saveBallDontLieSnapshot("2025-26", output, fixtureRequest);
