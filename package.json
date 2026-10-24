@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "collect:nba-stats": "node --experimental-strip-types scripts/collect-nba-stats.ts",
+    "validate:snapshot": "node --experimental-strip-types scripts/validate-snapshot.ts",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
     "typecheck": "next typegen && tsc --noEmit"
   },
