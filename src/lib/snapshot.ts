@@ -28,7 +28,8 @@ export function validateSnapshot(value: unknown): RookieSnapshot {
   requireValue(snapshot.scheduledGames === 82, "scheduledGames (82)");
   requireValue(Array.isArray(snapshot.rookies) && snapshot.rookies.length > 0, "rookies (nonempty)");
   const metadata = record(snapshot.sourceMetadata);
-  requireValue(metadata.provider === "NBA Stats" && metadata.seasonType === "Regular Season", "sourceMetadata");
+  requireValue(["NBA Stats", "BALLDONTLIE"].includes(String(metadata.provider)) &&
+    metadata.seasonType === "Regular Season", "sourceMetadata");
   requireValue(Array.isArray(metadata.endpoints) && metadata.endpoints.length > 0 &&
     metadata.endpoints.every(nonempty), "sourceMetadata.endpoints");
   requireValue(Array.isArray(metadata.warnings) && metadata.warnings.every(nonempty), "sourceMetadata.warnings");
@@ -39,11 +40,12 @@ export function validateSnapshot(value: unknown): RookieSnapshot {
       requireValue(nonempty(rookie[field]), `rookie.${field}`);
     }
     requireValue(typeof rookie.id === "string" && /^\d+$/.test(rookie.id) &&
-      !ids.has(rookie.id), "rookie.id (unique NBA ID)");
+      !ids.has(rookie.id), "rookie.id (unique provider player ID)");
     ids.add(rookie.id);
     requireValue(["Guard", "Forward", "Center"].includes(String(rookie.position)), "rookie.position");
     requireValue(typeof rookie.color === "string" && /^#[0-9a-f]{6}$/i.test(rookie.color), "rookie.color");
-    requireValue(number(rookie.age) && rookie.age > 0, "rookie.age");
+    requireValue((metadata.provider === "BALLDONTLIE" && rookie.age === null) ||
+      (number(rookie.age) && rookie.age > 0), "rookie.age");
     for (const field of ["number", "draftPick"]) {
       requireValue(rookie[field] === null || integer(rookie[field]), `rookie.${field}`);
     }

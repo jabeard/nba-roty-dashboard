@@ -114,7 +114,7 @@ test("file provider loads a valid snapshot and selection defaults to unchanged d
   try {
     const file = join(folder, "snapshot.json");
     const provider = createSnapshotProvider(() => readFile(file, "utf8"));
-    await assert.rejects(provider.getSnapshot(), /Cannot load NBA Stats snapshot/);
+    await assert.rejects(provider.getSnapshot(), /Cannot load provider snapshot/);
     await writeFile(file, "{not json");
     await assert.rejects(provider.getSnapshot(), /Cannot load/);
     await writeFile(file, JSON.stringify({}));

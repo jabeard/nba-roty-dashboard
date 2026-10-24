@@ -14,7 +14,7 @@ export function createSnapshotProvider(
         return validateSnapshot(JSON.parse(await readSnapshot()));
       } catch (error) {
         throw new Error(
-          `Cannot load NBA Stats snapshot at ${SNAPSHOT_PATH}: ${error instanceof Error ? error.message : String(error)} Run npm run collect:nba-stats locally.`,
+          `Cannot load provider snapshot at ${SNAPSHOT_PATH}: ${error instanceof Error ? error.message : String(error)} Run npm run collect:balldontlie or npm run collect:nba-stats locally.`,
         );
       }
     },

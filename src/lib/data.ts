@@ -14,7 +14,7 @@ export function selectRookieProvider(source = process.env.DATA_SOURCE ?? "demo",
         return {
           ...await mockRookieProvider.getSnapshot(),
           notice: source === "snapshot"
-            ? "NBA Stats snapshot is missing or invalid. Showing demo data instead. Generate and validate a snapshot locally, then restart or rebuild the app."
+            ? "Provider snapshot is missing or invalid. Showing demo data instead. Generate and validate a snapshot locally, then restart or rebuild the app."
             : "Unrecognized DATA_SOURCE. Showing demo data; use demo or snapshot.",
         };
       }

@@ -1,0 +1,110 @@
+name: Pull BALLDONTLIE rookie stats
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NBA season (YYYY-YY)
+        required: true
+        default: 2026-27
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collect-balldontlie
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check production deployment configuration
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Production stat pulls must run from the repository's default branch."
+            exit 1
+          fi
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect BALLDONTLIE snapshot
+        env:
+          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+          SEASON: ${{ inputs.season }}
+        run: npm run collect:balldontlie -- --season "$SEASON"
+
+      - name: Validate snapshot
+        run: npm run validate:snapshot
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: balldontlie-snapshot-${{ github.run_id }}
+          path: data/live-snapshot.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Pull Vercel production settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@65.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build production snapshot
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DATA_SOURCE: snapshot
+        run: |
+          # Override any demo setting pulled from the Vercel project.
+          printf '\nDATA_SOURCE=snapshot\n' >> .vercel/.env.production.local
+          npm run validate:snapshot
+          npx --yes vercel@65.2.0 build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy snapshot to Vercel production
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@65.2.0 deploy --prebuilt --prod --yes --env DATA_SOURCE=snapshot --token="$VERCEL_TOKEN"
+
+      - name: Write run summary
+        if: always()
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          if [ -f data/live-snapshot.json ]; then
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const s = JSON.parse(readFileSync("data/live-snapshot.json", "utf8"));
+              console.log(`## BALLDONTLIE snapshot (${s.season})`);
+              console.log(`${s.rookies.length} first-season players. Collected ${s.updatedAt}.`);
+              console.log("The balldontlie-snapshot artifact is available for download. Data was not committed.");
+              console.log(process.env.DEPLOY_OUTCOME === "success"
+                ? "The new snapshot was built and deployed to Vercel production."
+                : "Production deployment did not complete successfully. Check the configuration, build, and deployment step logs.");
+              console.log("Eligibility is inferred from provider history, not an official NBA rookie list.");
+            ' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## BALLDONTLIE collection failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "No snapshot was produced or deployed. Check the configuration/collection step logs, required secrets, and NBA subscription access." >> "$GITHUB_STEP_SUMMARY"
+          fi
