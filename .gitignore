@@ -152,3 +152,4 @@ vite.config.ts.timestamp-*
 # Local NBA Stats output; do not publish unlicensed data accidentally
 /data/live-snapshot.json
 /data/live-snapshot.json.*.tmp
+/data/live-snapshot.json.*.previous

@@ -144,6 +144,8 @@ Both provider formats use the same snapshot validator and dashboard.
    rookie stats → Run workflow**, use the **default branch**, select a season
    such as `2026-27`, and run it. The year is the season's starting year, not its
    ending year. Production pulls from other branches are rejected.
+   Leave **full_refresh** unchecked for incremental pulls; enable it to rebuild
+   all season stats and recheck eligibility after older provider corrections.
 4. The workflow collects and validates stats, pulls Vercel's production project
    settings, builds locally with the new snapshot and **`DATA_SOURCE=snapshot`**,
    and deploys the prebuilt output to **Vercel production**. No download or manual
@@ -187,6 +189,35 @@ DATA_SOURCE=snapshot npm run dev
 
 `--output /tmp/rookie-snapshot.json` is available for inspection; validate it with
 `npm run validate:snapshot -- --file /tmp/rookie-snapshot.json`.
+The collector caches season box scores and eligibility in
+`.cache/balldontlie/<season>.json` (gitignored). Subsequent pulls replace the
+recent date window, merging older cached rows by player/game ID. The window
+starts seven days before the previous successful collection, not the most recent
+game, so gaps between runs and newly debuted players are covered.
+
+Collection options:
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--cache` | `.cache/balldontlie/<season>.json` | Persistent season cache location |
+| `--full-refresh` | off | Ignore cached stats and eligibility and rebuild both |
+| `--refresh-days` | `7` | Lookback for corrections relative to the previous successful pull (1–366 days) |
+| `--concurrency` | `4` | Maximum concurrent player history checks (1–16) |
+| `--requests-per-minute` | `60` | Shared request-start limit (1–600); set no higher than your subscription permits |
+
+GitHub Actions restores the latest cache for the selected season and saves a new
+version after successful collection and validation, even if deployment later
+fails. A missing, invalid, or incompatible cache triggers a full collection.
+Actions caches may be evicted; they are an optimization, not the source of truth.
+They contain provider box scores, not API keys; the same redistribution cautions
+as snapshot artifacts apply. Repository Actions variables
+`BALLDONTLIE_REQUESTS_PER_MINUTE`, `BALLDONTLIE_CONCURRENCY`, and
+`BALLDONTLIE_REFRESH_DAYS` override the workflow defaults. Older corrections outside
+the refresh window require `--full-refresh` (or the workflow's **full_refresh** input).
+Season-scoped rookie/veteran classifications are reused until a full refresh.
+Collection logs and the Actions summary report phase timings, request counts,
+retries, and separate Vercel build/deployment timings.
+
 Production builds still require the validated file and `DATA_SOURCE=snapshot`
 at build time, then a rebuild whenever data changes. An unset `DATA_SOURCE`
 continues to select the original demo.
@@ -194,8 +225,8 @@ continues to select the original demo.
 ### Rookie discovery and limitations
 
 - BALLDONTLIE player profiles do not expose official rookie eligibility.
-  The collector scans **all** target-season box-score pages, then checks each
-  participant's prior regular-season history (season filters from 1946 through
+  On a cold/full pull, the collector scans **all** target-season box-score pages,
+  then checks each participant's prior regular-season history (season filters from 1946 through
   the preceding season). Players without prior recorded appearances enter the
   rookie snapshot. Draft year is **not** used as an eligibility proxy: delayed
   debuts and undrafted players can qualify, and current active rosters do not
@@ -207,14 +238,19 @@ continues to select the original demo.
 - Season stats combine all teams; the profile shows the team of the latest
   appearance. Missing draft pick/jersey and unavailable age display “—”.
   Availability still uses the full 82-game season, not team games played to date.
-- Requests are sequential, spaced at least 1.1 seconds apart, with 20-second
-  timeouts and at most three attempts for network errors, 429s, and 5xx responses.
-  Backoff honors `Retry-After`; a delay over two minutes stops the run.
+- History checks use pages of up to 100 rows and stop at the first recorded
+  appearance; cached classifications skip repeat history requests.
+- Requests share a rate limiter across bounded concurrent history checks, with
+  20-second timeouts and at most three attempts for network errors, 429s, and 5xx
+  responses. Pacing includes a 10% safety margin (1.1 seconds at the default limit).
+  Backoff honors `Retry-After` with a shared cooldown; a delay over two minutes
+  stops the run.
   Authentication/subscription errors fail immediately without printing the key
   or response bodies. No new dependencies or paid endpoints beyond ALL-STAR
   box-score access are needed.
-- Full-season pagination plus one or more history requests per participant can
-  take many minutes. Empty seasons, incomplete or invalid responses, and failed
+- Cold/full pulls still need full-season pagination and history requests, while
+  warm pulls fetch only the refresh window and history for newly observed players.
+  Empty seasons, incomplete or invalid responses, and failed
   requests exit nonzero; the validated file is replaced atomically only after
   the entire collection succeeds.
 

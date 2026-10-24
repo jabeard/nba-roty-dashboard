@@ -8,6 +8,10 @@ on:
         required: true
         default: 2026-27
         type: string
+      full_refresh:
+        description: Rebuild all season stats and eligibility (ignore cached data)
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -49,14 +53,39 @@ jobs:
 
       - run: npm ci
 
+      - name: Restore collection cache
+        if: ${{ !inputs.full_refresh }}
+        uses: actions/cache/restore@v4.2.4
+        with:
+          path: .cache/balldontlie/*.json
+          key: balldontlie-v1-${{ inputs.season }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            balldontlie-v1-${{ inputs.season }}-
+
       - name: Collect BALLDONTLIE snapshot
+        id: collection
         env:
           BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
           SEASON: ${{ inputs.season }}
-        run: npm run collect:balldontlie -- --season "$SEASON"
+          FULL_REFRESH: ${{ inputs.full_refresh }}
+          REQUESTS_PER_MINUTE: ${{ vars.BALLDONTLIE_REQUESTS_PER_MINUTE || '60' }}
+          CONCURRENCY: ${{ vars.BALLDONTLIE_CONCURRENCY || '4' }}
+          REFRESH_DAYS: ${{ vars.BALLDONTLIE_REFRESH_DAYS || '7' }}
+        run: |
+          set -o pipefail
+          mkdir -p .cache/balldontlie
+          args=(--season "$SEASON" --requests-per-minute "$REQUESTS_PER_MINUTE" --concurrency "$CONCURRENCY" --refresh-days "$REFRESH_DAYS")
+          if [ "$FULL_REFRESH" = "true" ]; then args+=(--full-refresh); fi
+          npm run collect:balldontlie -- "${args[@]}" | tee .cache/balldontlie/collection.log
 
       - name: Validate snapshot
         run: npm run validate:snapshot
+
+      - name: Save collection cache
+        uses: actions/cache/save@v4.2.4
+        with:
+          path: .cache/balldontlie/*.json
+          key: balldontlie-v1-${{ inputs.season }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload snapshot artifact
         uses: actions/upload-artifact@v4
@@ -69,13 +98,18 @@ jobs:
       - name: Pull Vercel production settings
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx --yes vercel@65.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+        run: |
+          SECONDS=0
+          trap 'echo "Vercel settings: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          npx --yes vercel@65.2.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
 
       - name: Build production snapshot
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DATA_SOURCE: snapshot
         run: |
+          SECONDS=0
+          trap 'echo "Production build: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"' EXIT
           # Override any demo setting pulled from the Vercel project.
           printf '\nDATA_SOURCE=snapshot\n' >> .vercel/.env.production.local
           npm run validate:snapshot
@@ -85,13 +119,21 @@ jobs:
         id: deploy
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx --yes vercel@65.2.0 deploy --prebuilt --prod --yes --env DATA_SOURCE=snapshot --token="$VERCEL_TOKEN"
+        run: |
+          SECONDS=0
+          trap 'echo "Production deployment: ${SECONDS}s" >> "$GITHUB_STEP_SUMMARY"' EXIT
+          npx --yes vercel@65.2.0 deploy --prebuilt --prod --yes --env DATA_SOURCE=snapshot --token="$VERCEL_TOKEN"
 
       - name: Write run summary
         if: always()
         env:
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
         run: |
+          if [ -f .cache/balldontlie/collection.log ]; then
+            printf '### Collection timings and requests\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .cache/balldontlie/collection.log >> "$GITHUB_STEP_SUMMARY"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f data/live-snapshot.json ]; then
             node --input-type=module -e '
               import { readFileSync } from "node:fs";
