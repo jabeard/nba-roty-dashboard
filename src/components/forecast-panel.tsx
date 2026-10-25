@@ -39,7 +39,18 @@ export function ForecastPanel({ data }: { data: ForecastDashboardData }) {
               const fair = fairOdds(player.probability);
               const comparisons = odds ? compareOdds(player.probability, player.id, odds, poolIds, Date.parse(data.asOf)) : [];
               return <tr key={player.id}>
-                <th scope="row">{player.name}</th>
+                <th scope="row">
+                  {player.name}
+                  {player.outlook ? <details>
+                    <summary>Availability: {player.outlook.status}</summary>
+                    <p>Source: {player.outlook.source}<br />Reviewed (UTC): {player.outlook.reviewedAt}</p>
+                    {player.outlook.returnPlan ? <>
+                      <p>Return window (UTC): {player.outlook.returnPlan.early.date} – {player.outlook.returnPlan.delayed.date}. Expected: {player.outlook.returnPlan.expected.date}.</p>
+                      <p>Team games missed before return (early / expected / delayed): {player.outlook.returnPlan.early.missedGames} / {player.outlook.returnPlan.expected.missedGames} / {player.outlook.returnPlan.delayed.missedGames}.</p>
+                      <p>Ramp-up: first {player.outlook.returnPlan.rampUpGames} team opportunities after return at {player.outlook.returnPlan.rampUpMinutes} minutes per appearance, then {player.expectedMinutes} minutes. Post-return availability: {percent(player.availability)}.</p>
+                    </> : <p>No explicit return window supplied; projection uses the reviewed remaining-season availability assumption.</p>}
+                  </details> : <p>Availability status not supplied; missing stats do not establish an injury.</p>}
+                </th>
                 <td>{percent(player.probability)}<br /><span>{percent(player.lower)}–{percent(player.upper)}</span></td>
                 <td>{player.projectedGames.toFixed(1)} / {player.projectedGames > 0 ? (player.projectedPoints / player.projectedGames).toFixed(1) : "—"}</td>
                 <td>{percent(player.observedWeight)}</td>
@@ -54,6 +65,26 @@ export function ForecastPanel({ data }: { data: ForecastDashboardData }) {
             })}</tbody>
           </table>
         </div>
+        {forecast.players.some((player) => player.returnScenarios) && <details>
+          <summary>Early / expected / delayed return comparisons</summary>
+          <p>All return plans change together. Each scenario covers the complete field and sums to 100% before rounding. Headline predictions use expected returns; dates and missed-game counts are reviewed assumptions, not a live schedule feed.</p>
+          <div className="forecast-table-scroll">
+            <table className="forecast-table">
+              <caption>Return-scenario impact on win chance, final production, and fair odds</caption>
+              <thead><tr><th scope="col">Player</th><th scope="col">Return scenario</th><th scope="col">Win chance</th><th scope="col">Projected GP / PPG</th><th scope="col">Fair decimal / American</th></tr></thead>
+              <tbody>{forecast.players.flatMap((player) => (player.returnScenarios ?? []).map((scenario) => {
+                const fair = fairOdds(scenario.probability);
+                return <tr key={`${player.id}-${scenario.scenario}`}>
+                  <th scope="row">{player.name}</th>
+                  <td>{scenario.scenario}</td>
+                  <td>{percent(scenario.probability)}</td>
+                  <td>{scenario.projectedGames.toFixed(1)} / {scenario.projectedGames > 0 ? (scenario.projectedPoints / scenario.projectedGames).toFixed(1) : "—"}</td>
+                  <td>{fair.decimal?.toFixed(2) ?? "—"} / {american(fair.american)}</td>
+                </tr>;
+              }))}</tbody>
+            </table>
+          </div>
+        </details>}
         {odds && <p>Odds provider: {odds.provider}. Collected {odds.collectedAt}. Prices older than 24 hours are stale; a recently collected file does not refresh an old quote.</p>}
         <p>Expected value is a model estimate, not guaranteed profit. Incomplete or stale markets are never normalized to imply full-field probabilities. Verify prices and rules with the bookmaker.</p>
       </>}

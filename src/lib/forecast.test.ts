@@ -8,6 +8,7 @@ import {
   validateHistoricalRace,
 } from "./forecast.ts";
 import type { ForecastPool, HistoricalRace } from "./forecast.ts";
+import { fairOdds } from "./odds.ts";
 
 function fixture(year = 2024): HistoricalRace {
   const season = `${year}-${String((year + 1) % 100).padStart(2, "0")}`;
@@ -41,6 +42,105 @@ function fixture(year = 2024): HistoricalRace {
 }
 
 const clone = <T,>(value: T): T => structuredClone(value);
+
+function comebackFixture(): HistoricalRace {
+  const race = fixture();
+  race.pool.players[0].outlook = {
+    status: "out", source: "Synthetic team injury report; not a real player outlook",
+    reviewedAt: race.pool.updatedAt,
+    returnPlan: {
+      early: { date: "2024-12-21T00:00:00.000Z", missedGames: 2 },
+      expected: { date: "2025-01-01T00:00:00.000Z", missedGames: 6 },
+      delayed: { date: "2025-02-01T00:00:00.000Z", missedGames: 15 },
+      rampUpGames: 4, rampUpMinutes: 15,
+    },
+  };
+  return race;
+}
+
+test("sourced return plans validate chronology, review dates, opportunities and ramp-up", () => {
+  assert.equal(validateForecastPool(comebackFixture().pool).players[0].outlook?.status, "out");
+  const mutations: ((p: ForecastPool) => void)[] = [
+    (p) => { p.players[0].outlook!.source = " "; },
+    (p) => { p.players[0].outlook!.status = "active"; },
+    (p) => { p.players[0].outlook!.reviewedAt = "2024-12-21T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.reviewedAt = "2023-12-20T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.returnPlan!.early.date = "2024-12-19T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.returnPlan!.expected.date = "2025-02-30T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.returnPlan!.delayed.date = "2025-08-01T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.returnPlan!.delayed.date = "2024-12-25T00:00:00.000Z"; },
+    (p) => { p.players[0].outlook!.returnPlan!.expected.missedGames = 1; },
+    (p) => { p.players[0].outlook!.returnPlan!.delayed.missedGames = 53; },
+    (p) => { p.players[0].outlook!.returnPlan!.early.missedGames = -1; },
+    (p) => { p.players[0].outlook!.returnPlan!.early.missedGames = 0.5; },
+    (p) => { p.players[0].outlook!.returnPlan!.rampUpGames = -1; },
+    (p) => { p.players[0].outlook!.returnPlan!.rampUpMinutes = 31; },
+    (p) => { p.players[0].outlook!.returnPlan!.rampUpMinutes = NaN; },
+  ];
+  for (const mutate of mutations) {
+    const { pool } = comebackFixture();
+    mutate(pool);
+    assert.throws(() => validateForecastPool(pool));
+  }
+});
+
+test("comeback scenarios preserve actuals, reduce opportunities and ramp both prior and observed rates", () => {
+  const { pool, snapshot } = comebackFixture();
+  const before = JSON.stringify({ pool, snapshot });
+  const result = forecastRace(pool, snapshot);
+  assert.deepEqual(result, forecastRace(pool, snapshot));
+  assert.equal(JSON.stringify({ pool, snapshot }), before);
+  const player = result.players.find((p) => p.id === "101")!;
+  const rate = 17 * 0.4 + 20 * 0.6;
+  assert.equal(player.projectedGames, 30 + (52 - 6) * 0.9);
+  assert.ok(Math.abs(player.projectedPoints - (600 + rate * ((52 - 6) * 0.9 - 4 * 0.9 * 0.5))) < 1e-10);
+  const [early, expected, delayed] = player.returnScenarios!;
+  assert.ok(early.projectedGames > expected.projectedGames && expected.projectedGames > delayed.projectedGames);
+  assert.ok(early.projectedPoints > expected.projectedPoints && expected.projectedPoints > delayed.projectedPoints);
+  assert.ok(early.probability > expected.probability && expected.probability > delayed.probability);
+  assert.equal(expected.probability, player.probability);
+  assert.equal(expected.projectedPoints, player.projectedPoints);
+  for (const scenario of ["early", "expected", "delayed"]) {
+    const estimates = result.players.map((p) => p.returnScenarios!.find((s) => s.scenario === scenario)!);
+    assert.ok(Math.abs(estimates.reduce((sum, p) => sum + p.probability, 0) - 1) < 1e-12);
+    for (const [index, estimate] of estimates.entries()) {
+      assert.ok(estimate.probability >= result.players[index].lower && estimate.probability <= result.players[index].upper);
+      assert.equal(fairOdds(estimate.probability).decimal, 1 / estimate.probability);
+    }
+  }
+  assert.ok(result.warnings.some((warning) => warning.includes("no likelihood")));
+  assert.ok(result.players.find((p) => p.id === "102")!.returnScenarios![0].probability <
+    result.players.find((p) => p.id === "102")!.returnScenarios![2].probability);
+});
+
+test("return plans handle no return, zero minutes, zero availability and a ramp longer than the season", () => {
+  for (const mode of ["no-return", "zero-minutes", "zero-availability", "long-ramp"] as const) {
+    const { pool, snapshot } = comebackFixture();
+    const player = pool.players[0];
+    const plan = player.outlook!.returnPlan!;
+    if (mode === "no-return") for (const key of ["early", "expected", "delayed"] as const) plan[key].missedGames = 52;
+    if (mode === "zero-minutes") { player.expectedMinutes = 0; plan.rampUpMinutes = 0; plan.rampUpGames = 82; }
+    if (mode === "zero-availability") player.availability = 0;
+    if (mode === "long-ramp") { plan.rampUpGames = 82; plan.rampUpMinutes = 0; }
+    const result = forecastRace(pool, snapshot).players.find((p) => p.id === player.id)!;
+    assert.equal(result.projectedPoints, 600);
+    assert.equal(result.projectedGames, mode === "no-return" || mode === "zero-availability" ? 30 : 30 + 46 * 0.9);
+    assert.ok(result.returnScenarios!.every((s) => Number.isFinite(s.probability) && s.projectedPoints === 600));
+  }
+});
+
+test("awaiting-debut return plans project impact without creating observed stats", () => {
+  const { pool, snapshot } = comebackFixture();
+  pool.players[2].outlook = clone(pool.players[0].outlook!);
+  pool.players[2].outlook!.status = "awaiting-debut";
+  delete pool.players[0].outlook;
+  const result = forecastRace(pool, snapshot).players.find((p) => p.id === "103")!;
+  assert.equal(result.observedWeight, 0);
+  assert.ok(result.projectedPoints > 0 && result.probability > 0);
+  assert.equal(snapshot.rookies.length, 2);
+  delete pool.players[2].outlook;
+  assert.ok(forecastRace(pool, snapshot).players.every((p) => p.returnScenarios === undefined));
+});
 
 test("pool validates real UTC dates, bounded priors, numeric unique IDs and assumptions", () => {
   const { pool } = fixture();
