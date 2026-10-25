@@ -160,7 +160,7 @@ export function validateForecastPool(value: unknown): ForecastPool {
         for (const scenario of returnScenarios) {
           const window = object(plan[scenario]);
           check(date(window.date) && seasonDate(window.date, pool.season) &&
-            window.date >= previousDate, `returnPlan.${scenario}.date`);
+            Date.parse(window.date) >= Date.parse(previousDate), `returnPlan.${scenario}.date`);
           check(integer(window.missedGames, previousMissed, Number(player.remainingGames)),
             `returnPlan.${scenario}.missedGames`);
           previousDate = window.date;

@@ -113,6 +113,17 @@ test("comeback scenarios preserve actuals, reduce opportunities and ramp both pr
     result.players.find((p) => p.id === "102")!.returnScenarios![2].probability);
 });
 
+test("return chronology compares UTC instants across optional millisecond formats", () => {
+  const { pool } = comebackFixture();
+  pool.updatedAt = "2024-12-20T00:00:00Z";
+  const plan = pool.players[0].outlook!.returnPlan!;
+  plan.early.date = "2024-12-20T00:00:00.000Z";
+  assert.equal(validateForecastPool(pool), pool);
+  plan.early.date = "2024-12-20T00:00:00.500Z";
+  plan.expected.date = "2024-12-20T00:00:00Z";
+  assert.throws(() => validateForecastPool(pool), /returnPlan.expected.date/);
+});
+
 test("return plans handle no return, zero minutes, zero availability and a ramp longer than the season", () => {
   for (const mode of ["no-return", "zero-minutes", "zero-availability", "long-ramp"] as const) {
     const { pool, snapshot } = comebackFixture();
