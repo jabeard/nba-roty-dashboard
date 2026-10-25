@@ -114,6 +114,186 @@ team impact, or opponent strength. Non-shooters can be penalized for zero 3P%.
 The fixed availability denominator suits this seed dataset only. The score is
 intentionally simple and should not be interpreted as total player value.
 
+**Does 58/100 mean an average rookie?** No. It is neither a percentile, a letter
+grade, nor a 58% award probability. In provider snapshots, availability contributes
+`10 × games played / 82`; it grows with appearances, but adds at most ten points
+over the whole season. The other 90 points depend on per-game production and can
+rise or fall. A player is not expected to approach 100 as the season progresses.
+
+## Eligibility coverage, forecasts, and sportsbook comparisons
+
+The **Forecasts & odds** section is separate from ROTY Score. It shows the selected
+season, source, collection time, reviewed field, and an explicit AJ Dybantsa
+coverage explanation. Missing records do **not** establish ineligibility or prove
+a player has not debuted. The default demo is still the seeded 2024–25 dataset;
+demo observations never produce forecasts or sportsbook comparisons.
+
+### Audit the actual data
+
+```bash
+npm run audit:coverage -- --season 2026-27 --player Dybantsa
+```
+
+This reports the local selection, checks the repository homepage's
+`/api/coverage` endpoint, and, when `BALLDONTLIE_API_KEY` is configured, searches
+player records and examines completed current-season appearances and prior
+regular-season history. It never treats an empty history as official eligibility.
+`--skip-deployed` avoids the deployment request. API access requires the applicable
+provider subscription. Credentials and transport errors are not printed.
+
+The deployed endpoint becomes available only after deploying this release.
+Implementation-time checks could not resolve the homepage
+`https://nba-roty-dashboard.vercel.app`; no local live snapshot or provider
+credentials were available. Therefore **neither the deployed season/timestamp nor
+Dybantsa's provider records were verified**, and no official player ID or
+eligibility has been invented.
+
+### Supply a reviewed pool and outlook
+
+Create the local, gitignored `data/rookie-pool.json` before building:
+
+- Top-level fields: `season` (consecutive `YYYY-YY`), `provider` (`BALLDONTLIE` or
+  `NBA Stats`, identifying the **player ID namespace**), `updatedAt` (UTC ISO
+  review/as-of time), `complete` (boolean curator attestation), and `players`.
+- Each player: `id` (unique numeric provider ID as a string), `name`,
+  `eligibilitySource` (official eligibility evidence/reference), `verifiedAt`
+  (UTC ISO review time), and `preseason`.
+- `preseason` contains projected per-game `minutes`, `points`, `rebounds`,
+  `assists`, `steals`, `blocks`, and a nonempty `role` description. These must be
+  genuine as-of expectations, not eventual season results. Role is explanatory
+  context; its quantitative effect is represented by minutes and production.
+- Each player also needs `remainingGames` (integer remaining team opportunities,
+  0–82), `expectedMinutes` (0–48 per appearance), `availability` (expected fraction
+  of remaining opportunities played, 0–1, incorporating injury outlook), and
+  `uncertainty` (scenario sensitivity, greater than zero through one).
+
+Include **every officially eligible player**, including players with no recorded
+appearance. Official evidence is separate from the stats provider ID namespace.
+`complete: true` is an auditable curator assertion, not an automated NBA ruling.
+All observed players must be reconciled with the reviewed pool before forecasting;
+omitting observed participants or marking the pool incomplete withholds estimates.
+The review must cover the latest observed game date, be within the target season,
+and not be in the future; it can predate the snapshot's later collection time.
+Game dates have provider calendar-date granularity, not exact completion times.
+Refresh remaining opportunities and injury outlook when refreshing stats.
+Observed plus remaining games cannot exceed 82.
+
+There is no fabricated default pool. Missing or malformed files produce visible
+notices while preserving the original statistical dashboard.
+
+### Projections, training, and historical validation
+
+Observed weight is `games played / (games played + 20)`. Remaining-season rates
+blend observed per-game production with preseason production adjusted from prior
+minutes to expected minutes. Played production is retained; remaining opportunities
+are multiplied by expected availability. Player-specific deterministic scenarios
+vary remaining production and availability, with less uncertainty as observations
+accumulate. Injury risk does not erase production already recorded. Expected
+final totals, including projected games, drive a separate softmax award model.
+
+Without a model artifact, the estimates are prominently **experimental,
+uncalibrated**. Probabilities sum to one only across an attested complete field.
+Scenario ranges are sensitivity ranges, **not calibrated confidence intervals**.
+These estimates do not imply the model has learned voting preferences.
+
+```bash
+npm run train:forecast -- --input /absolute/path/to/historical-races.json
+```
+
+The input is an array of historical races, each with `pool`, `snapshot`, `winnerId`,
+and `outcomeAt` (the UTC timestamp of the known award outcome). Pools use the
+contract above; snapshots use the existing snapshot contract. Use contemporaneous
+snapshots and outlooks **before** the award outcome; retrospective final stats or
+revised priors introduce leakage that timestamps alone cannot detect. There must
+be at least six distinct completed seasons, with one consistently timed forecast
+origin per season. A no-appearance historical snapshot may use `rookies: []` in
+the forecast-specific contract; the ordinary collector snapshot validator remains
+unchanged and still rejects empty data.
+
+Training fits production/games coefficients, calibrates temperature on later
+seasons, and evaluates subsequent seasons using expanding chronological folds.
+Each evaluated fold uses only earlier known outcomes. The serialized
+`data/forecast-model.json` records training seasons and held-out multiclass Brier
+score/log loss, displayed in the dashboard. The final model must predate the
+forecast season. Small-sample historical results are **not proof of calibration**.
+No licensed historical training corpus or fitted production model is bundled;
+real training and empirical calibration require those inputs.
+
+### Licensed odds and price comparison
+
+No sportsbook pages are scraped. Confirm your feed license permits public display
+and redistribution, then set server-only `ODDS_REDISTRIBUTION_APPROVED=true`.
+Two ingestion paths are supported:
+
+```bash
+# Import a normalized snapshot from an authorized licensed source:
+npm run collect:odds -- --season 2026-27 --input /absolute/path/to/licensed-odds.json
+
+# Discover an explicitly offered ROTY market through The Odds API:
+# Requires server-only ODDS_API_KEY and a reviewed player-alias mapping.
+npm run collect:odds -- --season 2026-27 --aliases /absolute/path/to/aliases.json
+```
+
+An alias file is an object with `playerProvider` (`BALLDONTLIE` or `NBA Stats`)
+and `players`, an array of `{ "playerId": "123", "name": "Provider name",
+"aliases": ["Alternative book spelling"] }` records. IDs must match the reviewed
+pool's provider namespace; unknown or ambiguous outcomes stop publication.
+The API adapter first discovers an unambiguous **NBA Rookie of the Year outright**
+sport listing and verifies the event and season. If unavailable, it fails rather
+than substituting NBA championship odds. **Live ROTY availability, FanDuel and
+DraftKings inclusion, and account access are not confirmed**; check your licensed
+provider's actual market/bookmaker coverage. Other authorized providers can supply
+the normalized import instead. The discovery adapter does not claim completeness
+because the feed does not explicitly guarantee a full eligible field.
+
+Normalized odds contract (`data/odds-snapshot.json`, written atomically):
+
+- `season`, `collectedAt` (UTC ISO), `provider` (licensed feed name),
+  `playerProvider` (`BALLDONTLIE` or `NBA Stats`, the player ID namespace),
+  `market: "nba_roty"`. Cross-namespace prices are withheld, even when IDs overlap.
+- `quotes`: array of `bookmaker`, `playerId`, `decimal` (>1), `updatedAt` (UTC ISO).
+  One quote per bookmaker/player; a quote cannot postdate collection.
+- `completeBooks`: names of bookmakers whose source **explicitly attests**
+  complete-field coverage; use an empty array when this is unknown.
+
+The dashboard shows probability, projected GP/PPG, fair decimal/American odds,
+each available book's decimal quote and timestamp, implied probability, and
+expected value per unit (`probability × decimal price − 1`). Fair odds exclude
+margin. Quotes older than 24 hours or in the future cannot supply EV.
+EV comparisons also require a current forecast: stats or outlook older than 48
+hours are labeled historical and suppress EV even when quotes are fresh. No-vig
+probabilities require explicit completeness, an **exact** match to all reviewed
+IDs (no missing or extra outcomes), and fresh quotes across the entire book.
+Incomplete markets remain labeled and unnormalized. Prices and EV are estimates,
+not executable-price guarantees or guaranteed profit; verify award rules and
+current prices with each book.
+
+### Deployment and refresh
+
+Locally, supply the optional files alongside `data/live-snapshot.json`, then run
+with `DATA_SOURCE=snapshot`. The Next.js build traces these fixed input paths;
+include them in the build/runtime filesystem. Forecast and odds freshness checks
+run per request, rather than treating the build date as the current time.
+Stats and price ingestion are still manual; this change does not silently enable
+paid API polling.
+
+The existing **Pull BALLDONTLIE rookie stats** production workflow optionally
+accepts repository Actions variables:
+
+- `ROOKIE_POOL_JSON`: current reviewed BALLDONTLIE pool JSON.
+- `FORECAST_MODEL_JSON`: previously trained, validated model JSON.
+- Either `ODDS_ALIASES_JSON` for API discovery, or `LICENSED_ODDS_JSON` for a
+  normalized licensed import (not both).
+- `ODDS_REDISTRIBUTION_APPROVED=true`, plus an `ODDS_API_KEY` Actions **secret**
+  for the API path. Never place credentials in JSON data or repository variables.
+
+The workflow validates/stages those inputs before the prebuilt Vercel deployment.
+Configured ingestion failures stop deployment; missing optional inputs leave
+clear unavailable/experimental states. Actions variable size limits apply; larger
+licensed datasets require an appropriately authorized build-time artifact supply
+instead. Historical training remains a local/offline command; never put the
+winner outcome into a live pool or train on the target season.
+
 ## BALLDONTLIE ALL-STAR snapshots
 
 The optional BALLDONTLIE collector uses authenticated `/nba/v1/stats` game
