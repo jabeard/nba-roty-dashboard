@@ -2,6 +2,22 @@ import type { RookieSnapshot } from "./models.ts";
 import { validateSeason } from "./nba-stats.ts";
 import { validateSnapshot } from "./snapshot.ts";
 
+const returnScenarios = ["early", "expected", "delayed"] as const;
+type ReturnScenario = typeof returnScenarios[number];
+
+export interface AvailabilityOutlook {
+  status: "active" | "out" | "awaiting-debut";
+  source: string;
+  reviewedAt: string;
+  returnPlan?: {
+    early: { date: string; missedGames: number };
+    expected: { date: string; missedGames: number };
+    delayed: { date: string; missedGames: number };
+    rampUpGames: number;
+    rampUpMinutes: number;
+  };
+}
+
 export interface ForecastPlayer {
   id: string;
   name: string;
@@ -15,6 +31,7 @@ export interface ForecastPlayer {
   expectedMinutes: number;
   availability: number;
   uncertainty: number;
+  outlook?: AvailabilityOutlook;
 }
 
 export interface ForecastPool {
@@ -51,6 +68,12 @@ export interface PlayerForecast {
   projectedGames: number;
   projectedPoints: number;
   observedWeight: number;
+  expectedMinutes: number;
+  availability: number;
+  outlook?: AvailabilityOutlook;
+  returnScenarios?: {
+    scenario: ReturnScenario; probability: number; projectedGames: number; projectedPoints: number;
+  }[];
 }
 
 export interface HistoricalRace {
@@ -123,6 +146,30 @@ export function validateForecastPool(value: unknown): ForecastPool {
     check(bounded(player.expectedMinutes, 0, 48), "player.expectedMinutes");
     check(bounded(player.availability, 0, 1), "player.availability");
     check(bounded(player.uncertainty, Number.EPSILON, 1), "player.uncertainty");
+    if (player.outlook !== undefined) {
+      const outlook = object(player.outlook);
+      check(["active", "out", "awaiting-debut"].includes(String(outlook.status)), "outlook.status");
+      check(text(outlook.source), "outlook.source");
+      check(date(outlook.reviewedAt) && seasonDate(outlook.reviewedAt, pool.season) &&
+        Date.parse(outlook.reviewedAt) <= Date.parse(pool.updatedAt), "outlook.reviewedAt");
+      if (outlook.returnPlan !== undefined) {
+        check(outlook.status !== "active", "active outlook cannot have a return plan");
+        const plan = object(outlook.returnPlan);
+        let previousDate = pool.updatedAt;
+        let previousMissed = 0;
+        for (const scenario of returnScenarios) {
+          const window = object(plan[scenario]);
+          check(date(window.date) && seasonDate(window.date, pool.season) &&
+            Date.parse(window.date) >= Date.parse(previousDate), `returnPlan.${scenario}.date`);
+          check(integer(window.missedGames, previousMissed, Number(player.remainingGames)),
+            `returnPlan.${scenario}.missedGames`);
+          previousDate = window.date;
+          previousMissed = window.missedGames;
+        }
+        check(integer(plan.rampUpGames, 0, 82), "returnPlan.rampUpGames");
+        check(bounded(plan.rampUpMinutes, 0, Number(player.expectedMinutes)), "returnPlan.rampUpMinutes");
+      }
+    }
     const prior = object(player.preseason);
     check(bounded(prior.minutes, 0, 48) && text(prior.role), "preseason.minutes/role");
     for (const key of Object.keys(limits) as (keyof typeof limits)[]) {
@@ -245,17 +292,30 @@ function shock(id: string, scenario: number, dimension: number): number {
   return scenario % 2 === 0 ? -value : value;
 }
 
-function vector(projection: Projection, scenario: number): number[] {
+function remainingProduction(
+  player: ForecastPlayer, availability: number, returnScenario: ReturnScenario,
+) {
+  const plan = player.outlook?.returnPlan;
+  const opportunities = Math.max(0, player.remainingGames - (plan?.[returnScenario].missedGames ?? 0));
+  const games = opportunities * availability;
+  const rampGames = Math.min(opportunities, plan?.rampUpGames ?? 0) * availability;
+  const rampFraction = player.expectedMinutes > 0 ? (plan?.rampUpMinutes ?? player.expectedMinutes) / player.expectedMinutes : 0;
+  // Rates already reflect expected minutes; ramp-up scales both observed and prior production.
+  const productionGames = games - rampGames * (1 - rampFraction);
+  return { games, productionGames };
+}
+
+function vector(projection: Projection, scenario: number, returnScenario: ReturnScenario = "expected"): number[] {
   const { player, actual, future, games, observedWeight } = projection;
   const availability = Math.max(0, Math.min(1,
     player.availability + shock(player.id, scenario, 0) *
       player.uncertainty * player.availability * (1 - player.availability)));
-  const remaining = player.remainingGames * availability;
+  const remaining = remainingProduction(player, availability, returnScenario);
   const uncertainty = player.uncertainty * (1 - 0.65 * observedWeight);
   const totals = actual.map((total, index) =>
-    total + future[index] * remaining * Math.max(0, 1 + shock(player.id, scenario, index + 1) * uncertainty));
+    total + future[index] * remaining.productionGames * Math.max(0, 1 + shock(player.id, scenario, index + 1) * uncertainty));
   return [totals[0] / 2000, totals[1] / 800, totals[2] / 600,
-    totals[3] / 200, (games + remaining) / 82];
+    totals[3] / 200, (games + remaining.games) / 82];
 }
 
 function softmax(vectors: number[][], weights: number[], temperature: number): number[] {
@@ -266,9 +326,9 @@ function softmax(vectors: number[][], weights: number[], temperature: number): n
   return exps.map((value) => value / sum);
 }
 
-function probabilities(rows: Projection[], weights: number[], temperature: number) {
+function probabilities(rows: Projection[], weights: number[], temperature: number, returnScenario: ReturnScenario = "expected") {
   const scenarios = Array.from({ length: SCENARIOS }, (_, index) =>
-    softmax(rows.map((row) => vector(row, index)), weights, temperature));
+    softmax(rows.map((row) => vector(row, index, returnScenario)), weights, temperature));
   return rows.map((_, index) => {
     const probability = scenarios.reduce((sum, row) => sum + row[index], 0) / SCENARIOS;
     return {
@@ -288,14 +348,35 @@ export function forecastRace(
     check(model.trainedThrough < pool.season, "model trained on target/future season");
   }
   const rows = projections(pool, snapshot);
-  const estimates = probabilities(rows,
-    model ? features.map((key) => model.featureWeights[key]) : baseline, model?.temperature ?? 0.7);
-  const players = rows.map((row, i) => ({
-    id: row.player.id, name: row.player.name, ...estimates[i],
-    projectedGames: row.games + row.player.remainingGames * row.player.availability,
-    projectedPoints: row.actual[0] + row.future[0] * row.player.remainingGames * row.player.availability,
-    observedWeight: row.observedWeight,
-  })).sort((a, b) => b.probability - a.probability || a.id.localeCompare(b.id));
+  const weights = model ? features.map((key) => model.featureWeights[key]) : baseline;
+  const temperature = model?.temperature ?? 0.7;
+  const estimates = probabilities(rows, weights, temperature);
+  const hasReturnPlans = rows.some((row) => row.player.outlook?.returnPlan);
+  const alternatives = hasReturnPlans ? returnScenarios.map((scenario) => ({
+    scenario, estimates: scenario === "expected" ? estimates : probabilities(rows, weights, temperature, scenario),
+  })) : [];
+  const players = rows.map((row, i): PlayerForecast => {
+    const remaining = remainingProduction(row.player, row.player.availability, "expected");
+    return {
+      id: row.player.id, name: row.player.name, ...estimates[i],
+      lower: Math.min(estimates[i].lower, ...alternatives.map((item) => item.estimates[i].lower)),
+      upper: Math.max(estimates[i].upper, ...alternatives.map((item) => item.estimates[i].upper)),
+      projectedGames: row.games + remaining.games,
+      projectedPoints: row.actual[0] + row.future[0] * remaining.productionGames,
+      observedWeight: row.observedWeight,
+      expectedMinutes: row.player.expectedMinutes,
+      availability: row.player.availability,
+      ...(row.player.outlook ? { outlook: row.player.outlook } : {}),
+      ...(hasReturnPlans ? { returnScenarios: alternatives.map(({ scenario, estimates: values }) => {
+        const future = remainingProduction(row.player, row.player.availability, scenario);
+        return {
+          scenario, probability: values[i].probability,
+          projectedGames: row.games + future.games,
+          projectedPoints: row.actual[0] + row.future[0] * future.productionGames,
+        };
+      }) } : {}),
+    };
+  }).sort((a, b) => b.probability - a.probability || a.id.localeCompare(b.id));
   const warnings = [
     "Scenario ranges are deterministic sensitivity ranges, not calibrated confidence intervals.",
     "Eligibility, role, availability and minutes are reviewed assumptions; completeness is curator-attested.",
@@ -304,6 +385,7 @@ export function forecastRace(
   if (!model) warnings.push("Experimental assumptions: no historical calibration or backtest available.");
   else warnings.push(`Small-sample historical backtest: ${model.validation.seasonCount} held-out seasons; not proof of calibration.`);
   if (players.some((player) => player.observedWeight === 0)) warnings.push("Awaiting-debut players use priors only.");
+  if (hasReturnPlans) warnings.push("Headline estimates use expected returns. Early/delayed comparisons change all reviewed return plans together, not just one player; no likelihood is assigned to these scenarios. Return assumptions and ramp-up effects are experimental, even with a historically backtested model.");
   return { players, status: model ? "backtested" : "experimental", warnings };
 }
 

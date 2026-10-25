@@ -68,7 +68,9 @@ export async function loadForecastDashboard(
     Date.parse(oddsValue.collectedAt) <= now && snapshot.source !== "demo" ? oddsValue : null;
   if (oddsValue && !odds) notices.push("Odds have a different season or player ID namespace, a future collection time, or demo-only observations; prices are withheld.");
   const forecastStale = now - Date.parse(snapshot.updatedAt) > 48 * 60 * 60 * 1_000 ||
-    Boolean(pool && now - Date.parse(pool.updatedAt) > 48 * 60 * 60 * 1_000);
+    Boolean(pool && (now - Date.parse(pool.updatedAt) > 48 * 60 * 60 * 1_000 ||
+      pool.players.some((player) => player.outlook &&
+        now - Date.parse(player.outlook.reviewedAt) > 48 * 60 * 60 * 1_000)));
   if (forecast && forecastStale) notices.push("Stats or outlook are older than 48 hours. Forecasts are historical estimates; expected-value comparisons are withheld until refreshed.");
   return {
     coverage: inspectCoverage(snapshot, pool), forecast, odds, notices,

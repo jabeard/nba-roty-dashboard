@@ -104,6 +104,19 @@ test("old statistics and outlooks flag historical forecasts instead of current E
   assert.match(data.notices.join(" "), /expected-value comparisons are withheld/);
 });
 
+test("refreshing pool metadata does not refresh an old availability review", async () => {
+  const reviewed = structuredClone(pool);
+  reviewed.players[0].outlook = {
+    status: "out", source: "Synthetic injury report", reviewedAt: "2024-12-29T00:00:00.000Z",
+  };
+  const stale = await loadForecastDashboard(snapshot, files({ "rookie-pool.json": reviewed }), now);
+  assert.ok(stale.forecast);
+  assert.equal(stale.forecastStale, true);
+  reviewed.players[0].outlook.reviewedAt = snapshot.updatedAt;
+  const fresh = await loadForecastDashboard(snapshot, files({ "rookie-pool.json": reviewed }), now);
+  assert.equal(fresh.forecastStale, false);
+});
+
 test("season progress affects only the ten-point availability component at fixed per-game performance", () => {
   const stats = snapshot.rookies[0].stats;
   const early = computeRotyScore(stats, 82);

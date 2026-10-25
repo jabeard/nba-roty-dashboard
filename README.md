@@ -166,6 +166,23 @@ Create the local, gitignored `data/rookie-pool.json` before building:
   0–82), `expectedMinutes` (0–48 per appearance), `availability` (expected fraction
   of remaining opportunities played, 0–1, incorporating injury outlook), and
   `uncertainty` (scenario sensitivity, greater than zero through one).
+- Optional `outlook`: `status` (`active`, `out`, or `awaiting-debut`), a nonempty
+  `source` reference for the availability report and assumptions, and `reviewedAt`
+  (UTC ISO, within the season and no later than the pool review). Absence of stats
+  never supplies an injury status. Existing pools without an outlook still work.
+- An `out` or `awaiting-debut` outlook can include a `returnPlan`. Its `early`,
+  `expected`, and `delayed` entries each contain `date` (UTC ISO return estimate)
+  and `missedGames` (integer team opportunities missed **from the pool review**).
+  Dates must be in the season, no earlier than the pool review, and ordered
+  early ≤ expected ≤ delayed; missed games must follow the same order and cannot
+  exceed `remainingGames`. Counts are curator-supplied schedule assumptions,
+  not inferred from calendar days.
+- `returnPlan.rampUpGames` is the number of initial team opportunities after return
+  with restricted minutes (integer 0–82); `rampUpMinutes` is minutes per appearance
+  during that phase (0–`expectedMinutes`). Thereafter `expectedMinutes` applies.
+  With a return plan, `availability` is the expected fraction played **after**
+  excluding pre-return missed games. Do not count the same absence twice.
+  Without a plan, availability retains its original whole-remaining-season meaning.
 
 Include **every officially eligible player**, including players with no recorded
 appearance. Official evidence is separate from the stats provider ID namespace.
@@ -180,6 +197,12 @@ Observed plus remaining games cannot exceed 82.
 
 There is no fabricated default pool. Missing or malformed files produce visible
 notices while preserving the original statistical dashboard.
+To activate forecasts, supply the reviewed full-field pool and a matching real
+snapshot, then run with `DATA_SOURCE=snapshot` (or configure `ROOKIE_POOL_JSON` in
+the existing deployment workflow). A trained model and bookmaker prices are
+optional: experimental win estimates and margin-free fair odds work without them.
+Real eligibility evidence, provider IDs, and current outlooks must come from an
+authorized reviewer; synthetic fixtures are never published as live projections.
 
 ### Projections, training, and historical validation
 
@@ -190,6 +213,23 @@ are multiplied by expected availability. Player-specific deterministic scenarios
 vary remaining production and availability, with less uncertainty as observations
 accumulate. Injury risk does not erase production already recorded. Expected
 final totals, including projected games, drive a separate softmax award model.
+
+Explicit return plans first remove missed opportunities, then multiply remaining
+opportunities by post-return availability. Production during the ramp-up phase is
+scaled by `rampUpMinutes / expectedMinutes`, affecting the entire blended rate;
+recorded production is never reduced. Ramp-up is capped to opportunities actually
+remaining. The model does not treat return dates as a schedule feed.
+
+Headline probabilities and GP/PPG use expected returns. When any return plan is
+present, the dashboard also compares early, expected, and delayed returns across
+the **entire field**, including their impact on competitors and fair odds. All
+plans shift together in these sensitivity comparisons; these are not independent
+player counterfactuals or weighted return-date predictions. Each scenario's win
+probabilities sum to one before display rounding. Sensitivity ranges include all
+three scenarios and production/availability perturbations. Availability sources,
+review dates, return windows, missed opportunities, and ramp-up minutes are visible
+beside each player's prediction. Return assumptions remain experimental even
+with a backtested coefficient model.
 
 Without a model artifact, the estimates are prominently **experimental,
 uncalibrated**. Probabilities sum to one only across an attested complete field.
@@ -261,8 +301,10 @@ each available book's decimal quote and timestamp, implied probability, and
 expected value per unit (`probability × decimal price − 1`). Fair odds exclude
 margin. Quotes older than 24 hours or in the future cannot supply EV.
 EV comparisons also require a current forecast: stats or outlook older than 48
-hours are labeled historical and suppress EV even when quotes are fresh. No-vig
-probabilities require explicit completeness, an **exact** match to all reviewed
+hours are labeled historical and suppress EV even when quotes are fresh.
+Comparisons also suppress EV when any individual availability review is older
+than 48 hours; updating the pool timestamp alone does not refresh that evidence.
+No-vig probabilities require explicit completeness, an **exact** match to all reviewed
 IDs (no missing or extra outcomes), and fresh quotes across the entire book.
 Incomplete markets remain labeled and unnormalized. Prices and EV are estimates,
 not executable-price guarantees or guaranteed profit; verify award rules and
