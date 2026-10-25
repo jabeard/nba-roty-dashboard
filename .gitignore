@@ -20,6 +20,8 @@ lib-cov
 
 # Coverage directory used by tools like istanbul
 coverage
+!src/app/api/coverage/
+!src/app/api/coverage/route.ts
 *.lcov
 
 # nyc test coverage
@@ -153,3 +155,9 @@ vite.config.ts.timestamp-*
 /data/live-snapshot.json
 /data/live-snapshot.json.*.tmp
 /data/live-snapshot.json.*.previous
+/data/rookie-pool.json
+/data/forecast-model.json
+/data/forecast-model.json.*.pending
+/data/odds-snapshot.json
+/data/odds-snapshot.json.*.tmp
+/data/odds-snapshot.json.*.stage

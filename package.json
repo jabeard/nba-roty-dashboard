@@ -12,7 +12,10 @@
     "collect:balldontlie": "node --experimental-strip-types scripts/collect-balldontlie.ts",
     "validate:snapshot": "node --experimental-strip-types scripts/validate-snapshot.ts",
     "test": "node --experimental-strip-types --test src/lib/*.test.ts",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "audit:coverage": "node --experimental-strip-types scripts/audit-coverage.ts",
+    "train:forecast": "node --experimental-strip-types scripts/train-forecast.ts",
+    "collect:odds": "node --experimental-strip-types scripts/collect-odds.ts"
   },
   "engines": {
     "node": ">=22.18.0"

@@ -81,6 +81,55 @@ jobs:
       - name: Validate snapshot
         run: npm run validate:snapshot
 
+      - name: Stage optional reviewed forecast inputs
+        env:
+          SEASON: ${{ inputs.season }}
+          ROOKIE_POOL_JSON: ${{ vars.ROOKIE_POOL_JSON }}
+          FORECAST_MODEL_JSON: ${{ vars.FORECAST_MODEL_JSON }}
+          ODDS_ALIASES_JSON: ${{ vars.ODDS_ALIASES_JSON }}
+          LICENSED_ODDS_JSON: ${{ vars.LICENSED_ODDS_JSON }}
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { mkdir, writeFile } from "node:fs/promises";
+          import { validateForecastPool, validateForecastModel } from "./src/lib/forecast.ts";
+          await mkdir("data", { recursive: true });
+          try {
+            if (process.env.ROOKIE_POOL_JSON) {
+              const pool = validateForecastPool(JSON.parse(process.env.ROOKIE_POOL_JSON));
+              if (pool.season !== process.env.SEASON || pool.provider !== "BALLDONTLIE") throw new Error();
+              await writeFile("data/rookie-pool.json", JSON.stringify(pool));
+            }
+            if (process.env.FORECAST_MODEL_JSON) {
+              const model = validateForecastModel(JSON.parse(process.env.FORECAST_MODEL_JSON));
+              if (model.trainedThrough >= process.env.SEASON) throw new Error();
+              await writeFile("data/forecast-model.json", JSON.stringify(model));
+            }
+            if (process.env.ODDS_ALIASES_JSON && process.env.LICENSED_ODDS_JSON) throw new Error();
+            for (const [name, path] of [
+              ["ODDS_ALIASES_JSON", "/tmp/roty-odds-aliases.json"],
+              ["LICENSED_ODDS_JSON", "/tmp/roty-licensed-odds.json"],
+            ]) {
+              if (process.env[name]) await writeFile(path, JSON.stringify(JSON.parse(process.env[name])), { mode: 0o600 });
+            }
+          } catch {
+            console.error("Invalid reviewed forecast inputs. Check season, provider namespace, model dates, and JSON; no deployment attempted.");
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Collect optional licensed sportsbook prices
+        if: ${{ vars.ODDS_ALIASES_JSON != '' || vars.LICENSED_ODDS_JSON != '' }}
+        env:
+          SEASON: ${{ inputs.season }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_REDISTRIBUTION_APPROVED: ${{ vars.ODDS_REDISTRIBUTION_APPROVED }}
+        run: |
+          if [ -f /tmp/roty-licensed-odds.json ]; then
+            npm run collect:odds -- --season "$SEASON" --input /tmp/roty-licensed-odds.json
+          else
+            npm run collect:odds -- --season "$SEASON" --aliases /tmp/roty-odds-aliases.json
+          fi
+
       - name: Save collection cache
         uses: actions/cache/save@v4.2.4
         with:

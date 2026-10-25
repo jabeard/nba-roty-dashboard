@@ -21,6 +21,23 @@ button, input, select { outline-offset: 4px; }
 button { border: 0; }
 svg { flex-shrink: 0; }
 .lime { color: var(--lime); }
+.forecast-panel { padding: 26px; margin: 28px 0; }
+.forecast-panel h2 { font-size: 24px; margin: 10px 0; }
+.forecast-panel h3 { margin-top: 24px; }
+.forecast-panel p, .forecast-panel li { line-height: 1.65; color: var(--muted); overflow-wrap: anywhere; }
+.forecast-panel details { margin: 18px 0; }
+.forecast-panel summary { color: var(--lime); padding: 8px 0; }
+.coverage-summary { display: flex; flex-wrap: wrap; gap: 24px; margin: 22px 0; }
+.coverage-summary dt { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.coverage-summary dd { margin: 0; overflow-wrap: anywhere; }
+.forecast-panel .forecast-warning { border-left: 2px solid #e4b778; padding-left: 12px; }
+.forecast-table-scroll { overflow-x: auto; }
+.forecast-table { width: 100%; min-width: 880px; border-collapse: collapse; text-align: left; }
+.forecast-table caption { text-align: left; color: var(--muted); padding: 12px 0; font-size: 11px; }
+.forecast-table th, .forecast-table td { border-bottom: 1px solid var(--border); padding: 14px 10px; vertical-align: top; font-size: 12px; line-height: 1.6; }
+.forecast-table thead { color: var(--lime); }
+.forecast-table td span, .book-quote time { color: var(--muted); font-size: 11px; }
+.book-quote + .book-quote { margin-top: 12px; }
 .app-shell { min-height: 100vh; }
 .skip-link { position: fixed; top: -60px; left: 20px; background: var(--lime); color: #101419; padding: 12px; z-index: 100; }
 .skip-link:focus { top: 12px; }

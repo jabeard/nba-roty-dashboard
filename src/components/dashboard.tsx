@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { RookieSnapshot } from "@/lib/models";
 import { formatDate, formatStat, recentAverages } from "@/lib/format";
 import { normalizeScoreWeights, rankRookies, SCORE_DIMENSIONS, SCORE_WEIGHTS } from "@/lib/scoring";
@@ -9,7 +9,7 @@ import { Arrow, Basketball, PlayerAvatar } from "./icons";
 import { Leaderboard } from "./leaderboard";
 import { PlayerDetail } from "./player-detail";
 
-export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
+export function Dashboard({ snapshot, insights }: { snapshot: RookieSnapshot; insights?: ReactNode }) {
   const ranked = useMemo(() => rankRookies(snapshot.rookies, snapshot.scheduledGames), [snapshot]);
   const [selectedId, setSelectedId] = useState(ranked[0]?.id);
   const detailRef = useRef<HTMLDivElement>(null);
@@ -33,6 +33,7 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
         <nav aria-label="Main navigation">
           <a href="#overview" className="nav-item nav-active"><span aria-hidden="true">▦</span> Overview <span className="nav-dot" /></a>
           <a href="#leaderboard" className="nav-item"><span aria-hidden="true">☷</span> Rookie leaderboard</a>
+          <a href="#forecasts" className="nav-item"><span aria-hidden="true">↗</span> Forecasts &amp; odds</a>
           <a href="#methodology" className="nav-item"><span aria-hidden="true">◉</span> The scoring model</a>
         </nav>
         <div className="sidebar-bottom"><span className="season-label">ON THE RADAR</span><div className="season-value">{snapshot.season} <span>SEASON</span></div><p>A new class.<br />A race worth watching.</p><Basketball className="sidebar-ball" /><div className="independent-label">Independent. Unofficial. All hoops.</div></div>
@@ -79,9 +80,11 @@ export function Dashboard({ snapshot }: { snapshot: RookieSnapshot }) {
             </div>
           </section>
 
+          {insights}
           <section id="methodology" className="panel methodology" aria-labelledby="methodology-heading">
-            <div className="methodology-intro"><p className="eyebrow">NO BLACK BOX</p><h2 id="methodology-heading">A score you can see through.</h2><p>ROTY Score is our custom, unofficial 0–100 index. Five dimensions. One weighted score. No predictions, no award odds.</p><span className="formula-chip">Σ (normalized dimension × weight)</span></div>
+            <div className="methodology-intro"><p className="eyebrow">NO BLACK BOX</p><h2 id="methodology-heading">A score you can see through.</h2><p>ROTY Score is our custom, unofficial 0–100 index. Five dimensions. One weighted score. It is not a win probability; forecasts and sportsbook odds are shown separately.</p><span className="formula-chip">Σ (normalized dimension × weight)</span></div>
             <div className="weights">{(Object.keys(SCORE_WEIGHTS) as (keyof typeof SCORE_WEIGHTS)[]).map((key) => <div className="weight-row" key={key}><div><span>{SCORE_DIMENSIONS[key].label}</span><strong>{Number(weights[key].toFixed(1))}%</strong></div><div className="weight-track"><span style={{ width: `${weights[key]}%` }} /></div><p>{SCORE_DIMENSIONS[key].description}</p></div>)}</div>
+            <p className="methodology-footnote">58/100 is not the 58th percentile, a “middle-of-the-pack” grade, or a 58% chance to win. Only availability rises automatically with additional appearances: up to 10 points over {snapshot.scheduledGames} scheduled games. The other 90 points depend on per-game performance and can rise or fall. Reaching 100 is not expected; it requires meeting every capped benchmark, including 25 PPG, 10 RPG, 8 APG, 2 steals and 2 blocks per game, the shooting targets, and full availability.</p>
             <p className="methodology-footnote">Each ratio is capped at 0–1 before weighting; the final score is shown to one decimal. Availability uses {snapshot.scheduledGames} scheduled games{snapshot.source === "demo" ? " in this demo" : " for the full season, not team games played to date"}. Shooting percentages aren’t adjusted for attempt volume. This simple model is a conversation starter, not a measure of total player value.</p>
           </section>
           <footer className="footer"><a href="#" className="footer-brand"><Basketball /> ROOKIE RADAR</a><p>Built for the next generation of the game.</p><span>Not affiliated with the NBA.</span></footer>
